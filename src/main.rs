@@ -1,8 +1,8 @@
 use anyhow::Result;
 use chrono::{Datelike, NaiveDate};
 use clap::Parser;
-use client::JtClient;
-use config::WorkAttribute;
+use client::{Issue, JtClient};
+use config::{Config, WorkAttribute};
 use console::style;
 use dialoguer::Select;
 use indicatif::ProgressBar;
@@ -33,15 +33,6 @@ async fn main() -> Result<()> {
 
     let client = JtClient::new(&token, uri, args.dry_run);
 
-    let spinner = ProgressBar::new_spinner().with_message(
-        style("Retrieving assigned tasks from JIRA")
-            .bold()
-            .to_string(),
-    );
-    spinner.enable_steady_tick(Duration::from_millis(100));
-    let tasks = client.get_assigned_issues().await?; //FIXME pass in first date
-    spinner.finish_with_message(style("Assigned tasks retrieved").green().to_string());
-
     let now = chrono::Local::now();
     let week = if args.next {
         (now + chrono::Duration::weeks(1)).iso_week()
@@ -50,6 +41,10 @@ async fn main() -> Result<()> {
     };
     let first_day =
         NaiveDate::from_isoywd_opt(now.year(), week.week(), chrono::Weekday::Mon).unwrap();
+    let done_tasks_from = first_day - chrono::Duration::days(1);
+
+    let tasks = get_tasks(&client, done_tasks_from).await?;
+
     let mut work = Vec::new();
     for day in first_day.iter_days().take(5) {
         println!("{}", style(day.format("%A, %-d %B")).bold());
@@ -61,13 +56,33 @@ async fn main() -> Result<()> {
             .unwrap();
         let selected = tasks.get(select).unwrap();
         work.push((day, selected));
-        println!("Selected {}", selected);
     }
 
+    upload_worklogs(&client, &config, work).await
+}
+
+async fn get_tasks(client: &JtClient, done_tasks_from: NaiveDate) -> Result<Vec<Issue>> {
+    let spinner = ProgressBar::new_spinner().with_message(
+        style("Retrieving assigned tasks from JIRA")
+            .bold()
+            .to_string(),
+    );
+    spinner.enable_steady_tick(Duration::from_millis(100));
+    let tasks = client.get_assigned_issues(done_tasks_from).await?; //FIXME pass in first date
+    spinner.finish_with_message(style("Assigned tasks retrieved").green().to_string());
+    Ok(tasks)
+}
+
+async fn upload_worklogs(
+    client: &JtClient,
+    config: &Config,
+    worklogs: Vec<(NaiveDate, &Issue)>,
+) -> Result<()> {
+    //FIXME make progress bar
     let spinner =
         ProgressBar::new_spinner().with_message(style("Logging work on Tempo").bold().to_string());
     spinner.enable_steady_tick(Duration::from_millis(100));
-    for (day, log) in work {
+    for (day, log) in worklogs {
         let mut resolved_attributes = config
             .dynamic_attributes
             .iter()

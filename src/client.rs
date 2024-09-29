@@ -109,12 +109,13 @@ impl JtClient {
         }
     }
 
-    pub async fn get_assigned_issues(&self) -> Result<Vec<Issue>> {
+    pub async fn get_assigned_issues(&self, done_tasks_from: NaiveDate) -> Result<Vec<Issue>> {
         let url = self.base.join("rest/api/2/search").unwrap();
+        let done_tasks_from = done_tasks_from.format("%Y-%m-%d").to_string();
         let body = IssueSearchRequest {
-            jql: String::from(
-                "(statusCategory NOT IN (Done) OR status CHANGED AFTER -1w) AND assignee IN (currentUser()) ORDER BY created DESC",
-            ),//FIXME make query smarter re date range
+            jql: format!(
+                "(statusCategory NOT IN (Done) OR status CHANGED AFTER {done_tasks_from}) AND assignee IN (currentUser()) ORDER BY created DESC",
+            ),
             fields: vec![String::from("*navigable")],
         };
         log::debug!("Search request contents: {body:?}");
