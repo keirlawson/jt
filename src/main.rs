@@ -5,7 +5,7 @@ use client::{Issue, JtClient};
 use config::{Config, WorkAttribute};
 use console::style;
 use dialoguer::Select;
-use indicatif::ProgressBar;
+use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::Url;
 use std::{env, time::Duration};
 
@@ -68,7 +68,7 @@ async fn get_tasks(client: &JtClient, done_tasks_from: NaiveDate) -> Result<Vec<
             .to_string(),
     );
     spinner.enable_steady_tick(Duration::from_millis(100));
-    let tasks = client.get_assigned_issues(done_tasks_from).await?; //FIXME pass in first date
+    let tasks = client.get_assigned_issues(done_tasks_from).await?;
     spinner.finish_with_message(style("Assigned tasks retrieved").green().to_string());
     Ok(tasks)
 }
@@ -78,10 +78,9 @@ async fn upload_worklogs(
     config: &Config,
     worklogs: Vec<(NaiveDate, &Issue)>,
 ) -> Result<()> {
-    //FIXME make progress bar
-    let spinner =
-        ProgressBar::new_spinner().with_message(style("Logging work on Tempo").bold().to_string());
-    spinner.enable_steady_tick(Duration::from_millis(100));
+    let bar = ProgressBar::new(5)
+        .with_style(ProgressStyle::with_template("{msg}\n{bar} {pos}/{len}").unwrap())
+        .with_message(style("Logging work on Tempo").bold().to_string());
     for (day, log) in worklogs {
         let mut resolved_attributes = config
             .dynamic_attributes
@@ -97,8 +96,9 @@ async fn upload_worklogs(
         resolved_attributes.extend(config.static_attributes.clone());
         client
             .create_worklog(&config.worker, day, &log.key, resolved_attributes)
-            .await?
+            .await?;
+        bar.inc(1);
     }
-    spinner.finish_with_message(style("Work logged").green().bold().to_string());
+    bar.finish_with_message(style("Work logged").green().bold().to_string());
     Ok(())
 }
