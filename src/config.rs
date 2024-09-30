@@ -10,6 +10,7 @@ pub struct Config {
     pub api_endpoint: Url,
     pub worker: String,
     pub reviewer: Option<String>,
+    pub daily_target_time_spent_seconds: Option<u64>,
     pub default_time_spent_seconds: Option<u64>,
     #[serde(default)]
     pub static_tasks: Vec<String>,

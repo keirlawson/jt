@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{Duration, NaiveDate};
+use chrono::{NaiveDate, TimeDelta};
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -106,6 +106,7 @@ impl JtClient {
         worker: &str,
         start: NaiveDate,
         task_id: &str,
+        time_spent: TimeDelta,
         attrs: Vec<crate::config::WorkAttribute>,
     ) -> Result<()> {
         let url = self.base.join("rest/tempo-timesheets/4/worklogs").unwrap();
@@ -122,7 +123,7 @@ impl JtClient {
         let payload = CreateWorklogRequest {
             worker: worker.to_owned(),
             started: start.format(JIRA_DATE_FORMAT).to_string(),
-            time_spent_seconds: 8 * 3600,
+            time_spent_seconds: time_spent.num_seconds() as u64,
             origin_task_id: task_id.to_owned(),
             attributes: HashMap::from_iter(attributes),
         };
@@ -151,7 +152,7 @@ impl JtClient {
             .base
             .join("rest/tempo-timesheets/4/timesheet-approval")
             .unwrap();
-        let period_start = monday - Duration::days(2); //Tempo seems to want the saturday prior
+        let period_start = monday - TimeDelta::days(2); //Tempo seems to want the saturday prior
         let payload = PostApprovalRequest {
             user: User {
                 key: worker.to_owned(),
