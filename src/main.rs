@@ -78,7 +78,8 @@ async fn get_tasks(client: &JtClient, done_tasks_from: NaiveDate) -> Result<Vec<
     );
     spinner.enable_steady_tick(Duration::from_millis(100));
     let tasks = client.get_assigned_issues(done_tasks_from).await?;
-    spinner.finish_with_message(style("Assigned tasks retrieved").green().to_string());
+    spinner.finish_and_clear();
+    println!("{}", style("Assigned tasks retrieved").green());
     Ok(tasks)
 }
 
@@ -108,7 +109,8 @@ async fn upload_worklogs(
             .await?;
         bar.inc(1);
     }
-    bar.finish_with_message(style("Work logged").green().bold().to_string());
+    bar.finish_and_clear();
+    println!("{}", style("Work logged").green().bold());
     Ok(())
 }
 
@@ -120,7 +122,8 @@ async fn submit(client: &JtClient, config: &Config, first_day: NaiveDate) -> Res
         client
             .submit_timesheet(&config.worker, reviewer, first_day)
             .await?;
-        spinner.finish_with_message(style("Timesheet submitted").green().bold().to_string());
+        spinner.finish_and_clear();
+        println!("{}", style("Timesheet submitted").green().bold());
         Ok(())
     } else {
         bail!("No reviewer specified for submission")

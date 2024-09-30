@@ -83,6 +83,8 @@ struct WorkAttribute {
     value: String,
 }
 
+const JIRA_DATE_FORMAT: &str = "%Y-%m-%d";
+
 pub struct JtClient {
     token: String,
     internal: Client,
@@ -119,7 +121,7 @@ impl JtClient {
         });
         let payload = CreateWorklogRequest {
             worker: worker.to_owned(),
-            started: start.format("%Y-%m-%d").to_string(),
+            started: start.format(JIRA_DATE_FORMAT).to_string(),
             time_spent_seconds: 8 * 3600,
             origin_task_id: task_id.to_owned(),
             attributes: HashMap::from_iter(attributes),
@@ -155,7 +157,7 @@ impl JtClient {
                 key: worker.to_owned(),
             },
             period: Period {
-                date_from: period_start.format("%Y-%m-%d").to_string(),
+                date_from: period_start.format(JIRA_DATE_FORMAT).to_string(),
             },
             action: Action {
                 name: ActionType::Submit,
@@ -179,7 +181,7 @@ impl JtClient {
 
     pub async fn get_assigned_issues(&self, done_tasks_from: NaiveDate) -> Result<Vec<Issue>> {
         let url = self.base.join("rest/api/2/search").unwrap();
-        let done_tasks_from = done_tasks_from.format("%Y-%m-%d").to_string();
+        let done_tasks_from = done_tasks_from.format(JIRA_DATE_FORMAT).to_string();
         let body = IssueSearchRequest {
             jql: format!(
                 "(statusCategory NOT IN (Done) OR status CHANGED AFTER {done_tasks_from}) AND assignee IN (currentUser()) ORDER BY created DESC",
