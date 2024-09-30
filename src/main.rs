@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use chrono::{Datelike, NaiveDate};
 use clap::Parser;
 use client::{Issue, JtClient};
@@ -21,6 +21,9 @@ struct Args {
     #[arg(long)]
     ///Fill timesheet for next week rather than current week
     next: bool,
+    #[arg(long)]
+    ///Submit timesheet for approval after adding work
+    submit: bool,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -58,7 +61,13 @@ async fn main() -> Result<()> {
         work.push((day, selected));
     }
 
-    upload_worklogs(&client, &config, work).await
+    upload_worklogs(&client, &config, work).await?;
+
+    if args.submit {
+        submit(&client, &config, first_day).await?;
+    }
+
+    Ok(())
 }
 
 async fn get_tasks(client: &JtClient, done_tasks_from: NaiveDate) -> Result<Vec<Issue>> {
@@ -101,4 +110,19 @@ async fn upload_worklogs(
     }
     bar.finish_with_message(style("Work logged").green().bold().to_string());
     Ok(())
+}
+
+async fn submit(client: &JtClient, config: &Config, first_day: NaiveDate) -> Result<()> {
+    if let Some(reviewer) = &config.reviewer {
+        let spinner = ProgressBar::new_spinner()
+            .with_message(style("Submitting timesheet").bold().to_string());
+        spinner.enable_steady_tick(Duration::from_millis(100));
+        client
+            .submit_timesheet(&config.worker, reviewer, first_day)
+            .await?;
+        spinner.finish_with_message(style("Timesheet submitted").green().bold().to_string());
+        Ok(())
+    } else {
+        bail!("No reviewer specified for submission")
+    }
 }

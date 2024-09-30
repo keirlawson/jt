@@ -8,6 +8,7 @@ use serde::{Deserialize, Deserializer};
 pub struct Config {
     pub api_endpoint: String, //FIXME make URL
     pub worker: String,
+    pub reviewer: Option<String>,
     pub default_time_spent_seconds: Option<u64>,
     #[serde(default)]
     pub static_tasks: Vec<String>,
