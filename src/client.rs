@@ -9,7 +9,7 @@ use std::{collections::HashMap, fmt::Display};
 #[serde(rename_all = "camelCase")]
 struct CreateWorklogRequest {
     worker: String,
-    started: String, //FIXME date here
+    started: String,
     time_spent_seconds: u64,
     origin_task_id: String,
     attributes: HashMap<String, WorkAttribute>,
@@ -30,7 +30,7 @@ struct User {
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct Period {
-    date_from: String, //FIXME date
+    date_from: String,
 }
 
 #[derive(Serialize, Debug)]

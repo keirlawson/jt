@@ -6,7 +6,8 @@ use serde::{Deserialize, Deserializer};
 
 #[derive(Deserialize)]
 pub struct Config {
-    pub api_endpoint: String, //FIXME make URL
+    #[serde(deserialize_with = "deserialize_url")]
+    pub api_endpoint: Url,
     pub worker: String,
     pub reviewer: Option<String>,
     pub default_time_spent_seconds: Option<u64>,
@@ -27,6 +28,14 @@ pub struct WorkAttribute {
 }
 
 const CONFIG_FILE_NAME: &str = "jt.toml";
+
+fn deserialize_url<'de, D>(deserializer: D) -> Result<Url, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let buf = String::deserialize(deserializer)?;
+    Url::parse(&buf).map_err(serde::de::Error::custom)
+}
 
 pub fn load_config() -> Result<Config> {
     let dir = dirs::config_dir().expect("Unable to determine configuration directory");

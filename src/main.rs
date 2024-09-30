@@ -6,7 +6,6 @@ use config::{Config, WorkAttribute};
 use console::style;
 use dialoguer::Select;
 use indicatif::{ProgressBar, ProgressStyle};
-use reqwest::Url;
 use std::{env, time::Duration};
 
 mod client;
@@ -32,9 +31,8 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let config = config::load_config()?;
     let token = env::var("JIRA_TOKEN")?;
-    let uri = Url::parse(&config.api_endpoint)?;
 
-    let client = JtClient::new(&token, uri, args.dry_run);
+    let client = JtClient::new(&token, config.api_endpoint.clone(), args.dry_run);
 
     let now = chrono::Local::now();
     let week = if args.next {
