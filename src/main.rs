@@ -131,7 +131,7 @@ async fn upload_worklogs(
     config: &Config,
     worklogs: Vec<(NaiveDate, &Issue, TimeDelta)>,
 ) -> Result<()> {
-    let bar = ProgressBar::new(5)
+    let bar = ProgressBar::new(worklogs.len() as u64)
         .with_style(ProgressStyle::with_template("{msg}\n{bar} {pos}/{len}").unwrap())
         .with_message(style("Logging work on Tempo").bold().to_string());
     for (day, log, time_spent) in worklogs {
