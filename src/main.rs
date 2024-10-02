@@ -107,8 +107,8 @@ async fn init(token: String) -> Result<()> {
         api_endpoint: endpoint,
         worker: user_key,
         reviewer,
-        daily_target_time_spent_seconds: Some(daily_time_target * 60),
-        default_time_spent_seconds: None,
+        daily_target_time_spent_minutes: Some(daily_time_target),
+        default_time_spent_minutes: None,
         static_tasks: Vec::new(),
         static_attributes: Vec::new(),
         dynamic_attributes: Vec::new(),
@@ -144,8 +144,8 @@ async fn fill(token: String, dry_run: bool, next: bool, auto_submit: bool) -> Re
     let tasks = get_tasks(&client, done_tasks_from).await?;
 
     let target_per_day = config
-        .daily_target_time_spent_seconds
-        .map(|seconds| TimeDelta::seconds(seconds as i64))
+        .daily_target_time_spent_minutes
+        .map(|minutes| TimeDelta::minutes(minutes as i64))
         .unwrap_or(DEFAULT_DAILY_TARGET);
     let mut work = Vec::new();
     for day in first_day.iter_days().take(5) {
@@ -154,8 +154,8 @@ async fn fill(token: String, dry_run: bool, next: bool, auto_submit: bool) -> Re
             &tasks,
             target_per_day,
             config
-                .default_time_spent_seconds
-                .map(|seconds| TimeDelta::seconds(seconds as i64)),
+                .default_time_spent_minutes
+                .map(|minutes| TimeDelta::minutes(minutes as i64)),
         );
         let today = today
             .into_iter()
