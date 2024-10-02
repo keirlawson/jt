@@ -1,11 +1,12 @@
 use anyhow::{bail, Result};
 use chrono::{Datelike, NaiveDate, TimeDelta};
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use client::{Issue, JtClient};
 use config::{Config, WorkAttribute};
 use console::style;
-use dialoguer::{Input, Select};
+use dialoguer::{Confirm, Input, Select};
 use indicatif::{ProgressBar, ProgressStyle};
+use reqwest::Url;
 use std::env;
 
 mod client;
@@ -16,28 +17,118 @@ const DEFAULT_DAILY_TARGET: TimeDelta = TimeDelta::hours(8);
 #[derive(Parser)]
 #[command(version, about)]
 struct Args {
-    #[arg(long)]
-    ///Do not actually log work
-    dry_run: bool,
-    #[arg(long)]
-    ///Fill timesheet for next week rather than current week
-    next: bool,
-    #[arg(long)]
-    ///Submit timesheet for approval after adding work
-    submit: bool,
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    ///Fill a timesheet
+    Fill {
+        #[arg(long)]
+        ///Do not actually log work
+        dry_run: bool,
+        #[arg(long)]
+        ///Fill timesheet for next week rather than current week
+        next: bool,
+        #[arg(long)]
+        ///Submit timesheet for approval after adding work
+        submit: bool,
+    },
+    ///Generate a configuration file
+    Init,
 }
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     env_logger::init();
     let args = Args::parse();
-    let config = config::load_config()?;
     let token = env::var("JIRA_TOKEN")?;
 
-    let client = JtClient::new(&token, config.api_endpoint.clone(), args.dry_run);
+    match args.command {
+        Commands::Fill {
+            dry_run,
+            next,
+            submit,
+        } => fill(token, dry_run, next, submit).await,
+        Commands::Init => init(token).await,
+    }
+}
+
+async fn init(token: String) -> Result<()> {
+    let endpoint: Url = Input::new()
+        .with_prompt("JIRA instance URL (eg \"https://jira.yourcompany.com\")")
+        .interact()
+        .unwrap();
+    let client = JtClient::new(&token, endpoint.clone(), true);
+    let spinner = ProgressBar::new_spinner().with_message("Validating instance URL");
+    spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+    client.health_check().await?;
+    spinner.finish_and_clear();
+    println!("{}", style("Instance URL validated").green());
+
+    let username: String = Input::new()
+        .with_prompt("Your JIRA username (eg \"jsmith\")")
+        .interact()
+        .unwrap();
+    let spinner = ProgressBar::new_spinner().with_message("Retrieving user key");
+    spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+    let user_key = client.get_user_key(&username).await?;
+    //FIXME what if invalid user?
+    spinner.finish_and_clear();
+    println!("{}", style("User key retrieved").green());
+
+    let specify_reviewer = Confirm::new()
+        .with_prompt("Specify reviewer? (enables submission)")
+        .default(true)
+        .interact()
+        .unwrap();
+    let reviewer = if specify_reviewer {
+        let reviewer_username: String = Input::new()
+            .with_prompt("Your reviewer's JIRA username (eg \"jsmith\")")
+            .interact()
+            .unwrap();
+        let spinner = ProgressBar::new_spinner().with_message("Retrieving reviewer key");
+        spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+        let reviewer_key = client.get_user_key(&reviewer_username).await?;
+        //FIXME what if invalid user?
+        spinner.finish_and_clear();
+        println!("{}", style("Reviewer key retrieved").green());
+        Some(reviewer_key)
+    } else {
+        None
+    };
+
+    let config = Config {
+        api_endpoint: endpoint,
+        worker: user_key,
+        reviewer,
+        daily_target_time_spent_seconds: None,
+        default_time_spent_seconds: None,
+        static_tasks: Vec::new(),
+        static_attributes: Vec::new(),
+        dynamic_attributes: Vec::new(),
+    };
+    config::write_config(config)?;
+    println!(
+        "\n{}\n",
+        style(format!(
+            "Configuration written to {}",
+            config::config_file_location().to_str().unwrap()
+        ))
+        .green()
+        .bold()
+    );
+    println!("Further options and customisations are available by manually editing the configuration file.");
+    Ok(())
+}
+
+async fn fill(token: String, dry_run: bool, next: bool, auto_submit: bool) -> Result<()> {
+    let config = config::load_config()?;
+    let client = JtClient::new(&token, config.api_endpoint.clone(), dry_run);
 
     let now = chrono::Local::now();
-    let week = if args.next {
+    let week = if next {
         (now + TimeDelta::weeks(1)).iso_week()
     } else {
         now.iso_week()
@@ -70,7 +161,7 @@ async fn main() -> Result<()> {
 
     upload_worklogs(&client, &config, work).await?;
 
-    if args.submit {
+    if auto_submit {
         submit(&client, &config, first_day).await?;
     }
 

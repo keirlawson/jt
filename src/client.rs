@@ -52,6 +52,11 @@ struct IssueSearchRequest {
 }
 
 #[derive(Deserialize)]
+struct UserResponse {
+    key: String,
+}
+
+#[derive(Deserialize)]
 struct IssueSearchResponse {
     #[serde(default)]
     issues: Vec<Issue>,
@@ -199,5 +204,29 @@ impl JtClient {
             .await?;
         let resp = res.json::<IssueSearchResponse>().await?;
         Ok(resp.issues)
+    }
+
+    pub async fn get_user_key(&self, username: &str) -> Result<String> {
+        let url = self.base.join("rest/api/2/user").unwrap();
+        let res = self
+            .internal
+            .get(url)
+            .query(&[("username", username)])
+            .bearer_auth(self.token.clone())
+            .send()
+            .await?;
+        let key = res.json::<UserResponse>().await?.key;
+        Ok(key)
+    }
+
+    pub async fn health_check(&self) -> Result<()> {
+        let url = self.base.join("rest/api/2/serverInfo").unwrap();
+        self.internal
+            .get(url)
+            .bearer_auth(self.token.clone())
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
     }
 }
