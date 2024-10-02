@@ -13,11 +13,17 @@ pub struct Config {
     pub daily_target_time_spent_seconds: Option<u64>,
     pub default_time_spent_seconds: Option<u64>,
     #[serde(default, skip_serializing)]
-    pub static_tasks: Vec<String>,
+    pub static_tasks: Vec<StaticTask>,
     #[serde(default, skip_serializing)]
     pub static_attributes: Vec<WorkAttribute>,
     #[serde(default, skip_serializing)]
     pub dynamic_attributes: Vec<WorkAttribute>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct StaticTask {
+    pub key: String,
+    pub description: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
