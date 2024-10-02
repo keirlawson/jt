@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use chrono::{Datelike, NaiveDate, TimeDelta};
 use clap::{Parser, Subcommand};
 use client::{Issue, JtClient};
@@ -6,6 +6,7 @@ use config::{Config, WorkAttribute};
 use console::style;
 use dialoguer::{Confirm, Input, Select};
 use indicatif::{ProgressBar, ProgressStyle};
+use rand::{seq::SliceRandom, thread_rng};
 use reqwest::Url;
 use std::env;
 
@@ -34,6 +35,9 @@ enum Commands {
         #[arg(long)]
         ///Submit timesheet for approval after adding work
         submit: bool,
+        #[arg(long)]
+        ///Select task at random rather than prompting
+        random: bool,
     },
     ///Generate a configuration file
     Init,
@@ -50,7 +54,8 @@ async fn main() -> Result<()> {
             dry_run,
             next,
             submit,
-        } => fill(token, dry_run, next, submit).await,
+            random,
+        } => fill(token, dry_run, next, submit, random).await,
         Commands::Init => init(token).await,
     }
 }
@@ -127,7 +132,13 @@ async fn init(token: String) -> Result<()> {
     Ok(())
 }
 
-async fn fill(token: String, dry_run: bool, next: bool, auto_submit: bool) -> Result<()> {
+async fn fill(
+    token: String,
+    dry_run: bool,
+    next: bool,
+    auto_submit: bool,
+    random: bool,
+) -> Result<()> {
     let config = config::load_config()?;
     let client = JtClient::new(&token, config.api_endpoint.clone(), dry_run);
 
@@ -156,7 +167,8 @@ async fn fill(token: String, dry_run: bool, next: bool, auto_submit: bool) -> Re
             config
                 .default_time_spent_minutes
                 .map(|minutes| TimeDelta::minutes(minutes as i64)),
-        );
+            random,
+        )?;
         let today = today
             .into_iter()
             .map(|(task, duration)| (day, task, duration));
@@ -177,7 +189,8 @@ fn select_days_tasks(
     tasks: &[Issue],
     target_per_day: TimeDelta,
     default_time_spent: Option<TimeDelta>,
-) -> Vec<(&Issue, TimeDelta)> {
+    random: bool,
+) -> Result<Vec<(&Issue, TimeDelta)>> {
     let mut today = Vec::new();
     println!("{}", style(day.format("%A, %-d %B")).bold());
     while today
@@ -186,26 +199,37 @@ fn select_days_tasks(
         .sum::<TimeDelta>()
         < target_per_day
     {
-        let select = Select::new()
-            .with_prompt("Select task")
-            .items(tasks)
-            .default(0)
-            .interact()
-            .unwrap();
-        let selected = tasks.get(select).unwrap();
-        let time_spent = if let Some(time) = default_time_spent {
-            println!("Using default time spent");
-            time
+        let (selected, time_spent) = if random {
+            let time_spent = default_time_spent.ok_or(anyhow!(""))?;
+            let selected = tasks.choose(&mut thread_rng()).unwrap();
+            println!(
+                "selected {} at random, assigning default time spent",
+                selected.key
+            );
+            (selected, time_spent)
         } else {
-            let input: u64 = Input::new()
-                .with_prompt("How many minutes did you spend on this task?")
+            let select = Select::new()
+                .with_prompt("Select task")
+                .items(tasks)
+                .default(0)
                 .interact()
                 .unwrap();
-            TimeDelta::minutes(input as i64)
+            let selected = tasks.get(select).unwrap();
+            let time_spent = if let Some(time) = default_time_spent {
+                println!("Using default time spent");
+                time
+            } else {
+                let input: u64 = Input::new()
+                    .with_prompt("How many minutes did you spend on this task?")
+                    .interact()
+                    .unwrap();
+                TimeDelta::minutes(input as i64)
+            };
+            (selected, time_spent)
         };
         today.push((selected, time_spent));
     }
-    today
+    Ok(today)
 }
 
 async fn get_tasks(client: &JtClient, done_tasks_from: NaiveDate) -> Result<Vec<Issue>> {
