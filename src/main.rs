@@ -74,9 +74,14 @@ async fn init(token: String) -> Result<()> {
     let spinner = ProgressBar::new_spinner().with_message("Retrieving user key");
     spinner.enable_steady_tick(std::time::Duration::from_millis(100));
     let user_key = client.get_user_key(&username).await?;
-    //FIXME what if invalid user?
     spinner.finish_and_clear();
     println!("{}", style("User key retrieved").green());
+
+    let daily_time_target: u64 = Input::new()
+        .with_prompt("Your daily target for time spent on tasks (in minutes, default is equivalent to 8 hours)")
+        .default(480)
+        .interact()
+        .unwrap();
 
     let specify_reviewer = Confirm::new()
         .with_prompt("Specify reviewer? (enables submission)")
@@ -91,7 +96,6 @@ async fn init(token: String) -> Result<()> {
         let spinner = ProgressBar::new_spinner().with_message("Retrieving reviewer key");
         spinner.enable_steady_tick(std::time::Duration::from_millis(100));
         let reviewer_key = client.get_user_key(&reviewer_username).await?;
-        //FIXME what if invalid user?
         spinner.finish_and_clear();
         println!("{}", style("Reviewer key retrieved").green());
         Some(reviewer_key)
@@ -103,7 +107,7 @@ async fn init(token: String) -> Result<()> {
         api_endpoint: endpoint,
         worker: user_key,
         reviewer,
-        daily_target_time_spent_seconds: None,
+        daily_target_time_spent_seconds: Some(daily_time_target * 60),
         default_time_spent_seconds: None,
         static_tasks: Vec::new(),
         static_attributes: Vec::new(),
