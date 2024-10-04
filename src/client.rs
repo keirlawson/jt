@@ -34,8 +34,9 @@ struct Period {
 }
 
 #[derive(Serialize, Debug)]
+#[serde(rename_all = "lowercase")]
 enum ActionType {
-    Submit, //FIXME insure correct casing of serialization
+    Submit,
 }
 
 #[derive(Serialize, Debug)]
