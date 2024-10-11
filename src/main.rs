@@ -277,7 +277,6 @@ async fn get_tasks(client: &JtClient, done_tasks_from: NaiveDate) -> Result<Vec<
     Ok(tasks)
 }
 
-//FIXME what if static attributes conflict?
 async fn upload_worklogs(
     client: &JtClient,
     dynamic_attributes: Vec<WorkAttribute>,
