@@ -2,11 +2,12 @@
 
 Fill out your weekly Tempo timesheet some your terminal.
 
-## Installation
-
 Presently only JIRA server is supported.
 
-TBC
+## Installation
+
+Download the relevant binaries from the latest release, or clone this repository
+and run `cargo install .`.
 
 ## Usage
 
@@ -22,7 +23,9 @@ jt init
 ```
 
 This will run a short wizard that will populate an initial configuration file
-for you, calling your JIRA instance where necessary to populate values.
+for you, calling your JIRA instance where necessary to populate values. This
+file is called `jt.toml` and is located in you system's configuration directory
+(on Linux, usually `~/.config`).
 
 ### Configuration options
 
