@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-release-linux:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install cargo-deb
+      run: cargo install cargo-deb
+    - name: Package
+      run: |
+        cargo deb --verbose
+        echo "DEB_NAME=$(basename $(ls target/debian/*.deb))" >> "$GITHUB_ENV"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.DEB_NAME }}
+        path: target/debian/${{ env.DEB_NAME }}
+    - name: Create binary archive
+      run: |
+        xz -vfT0 target/release/jt
+        mv target/release/jt.xz ./jt-${{github.ref_name}}-X86_64-unknown-linux-gnu.xz 
+    - uses: actions/upload-artifact@v4
+      with:
+        name: jt-linux
+        path: ./jt-${{github.ref_name}}-X86_64-unknown-linux-gnu.xz 
+
+  build-release-mac:
+    runs-on: macos-14
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Package
+      run: |
+        cargo build --release --verbose
+    - name: Create binary archive
+      run: |
+        gzip -v target/release/jt
+        mv target/release/jt.gz ./jt-${{github.ref_name}}-aarch64-apple-darwin.gz 
+    - uses: actions/upload-artifact@v4
+      with:
+        name: jt-mac
+        path: ./jt-${{github.ref_name}}-aarch64-apple-darwin.gz 
+          
+  release:
+    runs-on: ubuntu-latest
+
+    needs: [build-release-linux, build-release-mac]
+
+    steps:
+    - name: Download binaries
+      uses: actions/download-artifact@v4
+      with:
+          merge-multiple: true
+    - name: Release
+      uses: softprops/action-gh-release@v1    
+      with:
+          files: |
+            ./*.gz
+            ./*.xz
+            ./*.deb
+
+    
