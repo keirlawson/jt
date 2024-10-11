@@ -23,7 +23,10 @@ pub struct Config {
 #[derive(Serialize, Deserialize)]
 pub struct StaticTask {
     pub key: String,
+    #[serde(default)]
     pub description: String,
+    #[serde(default)]
+    pub attributes: Vec<WorkAttribute>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

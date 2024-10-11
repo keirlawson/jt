@@ -2,18 +2,41 @@ use anyhow::{anyhow, bail, Result};
 use chrono::{Datelike, NaiveDate, TimeDelta};
 use clap::{Parser, Subcommand};
 use client::{Issue, JtClient};
-use config::{Config, WorkAttribute};
+use config::{Config, StaticTask, WorkAttribute};
 use console::style;
 use dialoguer::{Confirm, Input, Select};
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::{seq::SliceRandom, thread_rng};
 use reqwest::Url;
-use std::env;
+use std::{env, fmt::Display};
 
 mod client;
 mod config;
 
 const DEFAULT_DAILY_TARGET: TimeDelta = TimeDelta::hours(8);
+
+enum Task {
+    Static(StaticTask),
+    FromQuery(Issue),
+}
+
+impl Task {
+    fn key(&self) -> String {
+        match self {
+            Task::Static(s) => s.key.clone(),
+            Task::FromQuery(f) => f.key.clone(),
+        }
+    }
+}
+
+impl Display for Task {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Task::Static(s) => write!(f, "{} - {}", s.key, s.description),
+            Task::FromQuery(q) => write!(f, "{}", q),
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -152,7 +175,9 @@ async fn fill(
         NaiveDate::from_isoywd_opt(now.year(), week.week(), chrono::Weekday::Mon).unwrap();
     let done_tasks_from = first_day - TimeDelta::days(1);
 
-    let tasks = get_tasks(&client, done_tasks_from).await?;
+    let issues = get_tasks(&client, done_tasks_from).await?;
+    let mut tasks: Vec<Task> = issues.into_iter().map(Task::FromQuery).collect();
+    tasks.extend(config.static_tasks.into_iter().map(Task::Static));
 
     let target_per_day = config
         .daily_target_time_spent_minutes
@@ -175,10 +200,17 @@ async fn fill(
         work.extend(today);
     }
 
-    upload_worklogs(&client, &config, work).await?;
+    upload_worklogs(
+        &client,
+        config.dynamic_attributes,
+        config.static_attributes,
+        &config.worker,
+        work,
+    )
+    .await?;
 
     if auto_submit {
-        submit(&client, &config, first_day).await?;
+        submit(&client, config.reviewer, &config.worker, first_day).await?;
     }
 
     Ok(())
@@ -186,11 +218,11 @@ async fn fill(
 
 fn select_days_tasks(
     day: NaiveDate,
-    tasks: &[Issue],
+    tasks: &[Task],
     target_per_day: TimeDelta,
     default_time_spent: Option<TimeDelta>,
     random: bool,
-) -> Result<Vec<(&Issue, TimeDelta)>> {
+) -> Result<Vec<(&Task, TimeDelta)>> {
     let mut today = Vec::new();
     println!("{}", style(day.format("%A, %-d %B")).bold());
     while today
@@ -204,7 +236,7 @@ fn select_days_tasks(
             let selected = tasks.choose(&mut thread_rng()).unwrap();
             println!(
                 "selected {} at random, assigning default time spent",
-                selected.key
+                selected.key()
             );
             (selected, time_spent)
         } else {
@@ -245,35 +277,26 @@ async fn get_tasks(client: &JtClient, done_tasks_from: NaiveDate) -> Result<Vec<
     Ok(tasks)
 }
 
+//FIXME what if static attributes conflict?
 async fn upload_worklogs(
     client: &JtClient,
-    config: &Config,
-    worklogs: Vec<(NaiveDate, &Issue, TimeDelta)>,
+    dynamic_attributes: Vec<WorkAttribute>,
+    static_attributes: Vec<WorkAttribute>,
+    worker: &str,
+    worklogs: Vec<(NaiveDate, &Task, TimeDelta)>,
 ) -> Result<()> {
     let bar = ProgressBar::new(worklogs.len() as u64)
         .with_style(ProgressStyle::with_template("{msg}\n{bar} {pos}/{len}").unwrap())
         .with_message(style("Logging work on Tempo").bold().to_string());
     for (day, log, time_spent) in worklogs {
-        let mut resolved_attributes = config
-            .dynamic_attributes
-            .iter()
-            .map(|attr| {
-                let pointable = serde_json::to_value(&log.fields).unwrap();
-                let pointed = pointable.pointer(&attr.value).unwrap().as_str().unwrap(); //FIXME error on unwrap failure
-                let mut evaluated = attr.clone();
-                evaluated.value = pointed.to_owned();
-                evaluated
-            })
-            .collect::<Vec<WorkAttribute>>();
-        resolved_attributes.extend(config.static_attributes.clone());
+        let attributes = match log {
+            Task::Static(task) => task.attributes.clone(),
+            Task::FromQuery(issue) => {
+                resolve_attributes(issue, &static_attributes, &dynamic_attributes)
+            }
+        };
         client
-            .create_worklog(
-                &config.worker,
-                day,
-                &log.key,
-                time_spent,
-                resolved_attributes,
-            )
+            .create_worklog(worker, day, &log.key(), time_spent, attributes)
             .await?;
         bar.inc(1);
     }
@@ -282,13 +305,37 @@ async fn upload_worklogs(
     Ok(())
 }
 
-async fn submit(client: &JtClient, config: &Config, first_day: NaiveDate) -> Result<()> {
-    if let Some(reviewer) = &config.reviewer {
+fn resolve_attributes(
+    issue: &Issue,
+    static_attributes: &[WorkAttribute],
+    dynamic_attributes: &[WorkAttribute],
+) -> Vec<WorkAttribute> {
+    let mut resolved = dynamic_attributes
+        .iter()
+        .map(|attr| {
+            let pointable = serde_json::to_value(&issue.fields).unwrap();
+            let pointed = pointable.pointer(&attr.value).unwrap().as_str().unwrap(); //FIXME error on unwrap failure
+            let mut evaluated = attr.clone();
+            evaluated.value = pointed.to_owned();
+            evaluated
+        })
+        .collect::<Vec<WorkAttribute>>();
+    resolved.extend_from_slice(static_attributes);
+    resolved
+}
+
+async fn submit(
+    client: &JtClient,
+    reviewer: Option<String>,
+    worker: &str,
+    first_day: NaiveDate,
+) -> Result<()> {
+    if let Some(reviewer) = reviewer {
         let spinner = ProgressBar::new_spinner()
             .with_message(style("Submitting timesheet").bold().to_string());
         spinner.enable_steady_tick(std::time::Duration::from_millis(100));
         client
-            .submit_timesheet(&config.worker, reviewer, first_day)
+            .submit_timesheet(worker, &reviewer, first_day)
             .await?;
         spinner.finish_and_clear();
         println!("{}", style("Timesheet submitted").green().bold());
