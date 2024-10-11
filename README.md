@@ -9,8 +9,6 @@ Presently only JIRA server is supported.
 Download the relevant binaries from the latest release, or clone this repository
 and run `cargo install .`.
 
-## Usage
-
 You personal JIRA token is read as an environment variable named `JIRA_TOKEN`.
 To create such a token follow the instructions
 [here](https://confluence.atlassian.com/enterprise/using-personal-access-tokens-1026032365.html).
@@ -26,6 +24,21 @@ This will run a short wizard that will populate an initial configuration file
 for you, calling your JIRA instance where necessary to populate values. This
 file is called `jt.toml` and is located in you system's configuration directory
 (on Linux, usually `~/.config`).
+
+## Usage
+
+```
+Usage: jt <COMMAND>
+
+Commands:
+  fill  Fill a timesheet
+  init  Generate a configuration file
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
 
 ### Configuration options
 
@@ -82,18 +95,3 @@ In order to figure out the combination of static and dynamic attributes you need
 for your particular JIRA/Tempo setup it is recommended to use your browsers
 network tools to understand which attributes are typically populated when
 filling out the timesheet using the web interface.
-
-### CLI options
-
-```
-Usage: jt <COMMAND>
-
-Commands:
-  fill  Fill a timesheet
-  init  Generate a configuration file
-  help  Print this message or the help of the given subcommand(s)
-
-Options:
-  -h, --help     Print help
-  -V, --version  Print version
-```
