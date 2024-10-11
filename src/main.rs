@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use chrono::{Datelike, NaiveDate, TimeDelta};
 use clap::{Parser, Subcommand};
 use client::{Issue, JtClient};
@@ -291,7 +291,7 @@ async fn upload_worklogs(
         let attributes = match log {
             Task::Static(task) => task.attributes.clone(),
             Task::FromQuery(issue) => {
-                resolve_attributes(issue, &static_attributes, &dynamic_attributes)
+                resolve_attributes(issue, &static_attributes, &dynamic_attributes)?
             }
         };
         client
@@ -308,19 +308,23 @@ fn resolve_attributes(
     issue: &Issue,
     static_attributes: &[WorkAttribute],
     dynamic_attributes: &[WorkAttribute],
-) -> Vec<WorkAttribute> {
+) -> Result<Vec<WorkAttribute>> {
     let mut resolved = dynamic_attributes
         .iter()
         .map(|attr| {
             let pointable = serde_json::to_value(&issue.fields).unwrap();
-            let pointed = pointable.pointer(&attr.value).unwrap().as_str().unwrap(); //FIXME error on unwrap failure
+            let pointed = pointable
+                .pointer(&attr.value)
+                .context("Unable to resolve JSON pointer")?
+                .as_str()
+                .context("JSON pointer does not point to string value")?;
             let mut evaluated = attr.clone();
             evaluated.value = pointed.to_owned();
-            evaluated
+            Ok(evaluated)
         })
-        .collect::<Vec<WorkAttribute>>();
+        .collect::<Result<Vec<WorkAttribute>>>()?;
     resolved.extend_from_slice(static_attributes);
-    resolved
+    Ok(resolved)
 }
 
 async fn submit(
