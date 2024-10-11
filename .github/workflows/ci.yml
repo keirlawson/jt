@@ -1,0 +1,23 @@
+on: [push, pull_request]
+
+name: build
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo build --verbose
+      - run: cargo clippy
+      - run: cargo fmt --all --check 
+
+  build-mac:
+    name: Build (MacOS) 
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo build --verbose
